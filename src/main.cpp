@@ -1,44 +1,75 @@
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
 
-int count1 = 0;
-int count2 = 0;
+namespace {
+constexpr uint8_t SDA_PIN = 21;
+constexpr uint8_t SCL_PIN = 22;
+// Renamed to avoid collision with Adafruit's internal macros
+constexpr uint8_t SENSOR_I2C_ADDRESS = 0x76; 
+constexpr uint32_t SERIAL_BAUD_RATE = 9600;
+constexpr TickType_t SENSOR_READ_INTERVAL = pdMS_TO_TICKS(2000);
 
-void task1(void *pvParameters) {
+Adafruit_BME280 bme; // I2C
+} // namespace
+
+void sensorTask(void *pvParameters) {
+  (void)pvParameters;
+
   while (true) {
-    count1++;
-    Serial.print("Task 1 count: ");
-    Serial.println(count1);
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // Delay for 1 second
-  }
-}
+    // Read data from the BME280
+    float temp = bme.readTemperature();
+    float humidity = bme.readHumidity();
+    float pressure = bme.readPressure() / 100.0F; // Convert Pa to hPa
 
-void task2(void *pvParameters) {
-  while (true) {
-    count2++;
-    Serial.print("Task 2 count: ");
-    Serial.println(count2);
-    vTaskDelay(500 / portTICK_PERIOD_MS); // Delay for 1 second
+    // Check if any reads failed and exit early (to try again)
+    if (isnan(temp) || isnan(humidity) || isnan(pressure)) {
+      Serial.println("Failed to read from BME280 sensor!");
+      vTaskDelay(SENSOR_READ_INTERVAL);
+      continue;
+    }
+
+    Serial.print("Temperature: ");
+    Serial.print(temp, 2);
+    Serial.print(" °C | ");
+
+    Serial.print("Humidity: ");
+    Serial.print(humidity, 2);
+    Serial.print(" % | ");
+
+    Serial.print("Pressure: ");
+    Serial.print(pressure, 2);
+    Serial.println(" hPa");
+
+    vTaskDelay(SENSOR_READ_INTERVAL);
   }
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(SERIAL_BAUD_RATE);
+  Serial.setDebugOutput(false);
+  delay(1000);
+  
+  Wire.begin(SDA_PIN, SCL_PIN);
 
-  xTaskCreate(task1,
-     "Task 1",
-      1000,
-       NULL,
-        1,
-     NULL);
-  xTaskCreate(task2,
-     "Task 2",
-      1000,
-       NULL,
-        1,
-         NULL);
+  Serial.println("Starting HW-611 (BME280) sensor task...");
 
+  // Initialize the BME280 sensor using the renamed variable
+  bool status = bme.begin(SENSOR_I2C_ADDRESS, &Wire);  
+  if (!status) {
+    Serial.println("Could not find a valid BME280 sensor at 0x76, check wiring!");
+    Serial.print("SensorID was: 0x"); 
+    Serial.println(bme.sensorID(), HEX);
+    return;
+  }
+
+  Serial.println("BME280 initialized successfully.");
+
+  // Create the FreeRTOS task to read the sensor
+  xTaskCreate(sensorTask, "SensorTask", 4096, NULL, 1, NULL);
 }
 
 void loop() {
-
+  // Empty loop, FreeRTOS task handles the reads
 }
