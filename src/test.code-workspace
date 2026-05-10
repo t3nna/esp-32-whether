@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../../test"
+		},
+		{
+			"name": "firstProject",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
